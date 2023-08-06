@@ -1,0 +1,3 @@
+[submodule "sce_symbols"]
+	path = sce_symbols
+	url = https://github.com/zecoxao/sce_symbols.git
