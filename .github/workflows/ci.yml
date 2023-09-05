@@ -1,0 +1,59 @@
+name: CI
+
+on: [ push, pull_request, workflow_dispatch ]
+
+permissions:
+  contents: write
+
+jobs:
+  build_extension:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ghidra: ['10.3', '10.3.1', '10.3.2', '10.3.3']
+    steps:
+      - name: Set Ghidra version
+        run: |
+          if [ ${{ matrix.ghidra }} = latest ]; then
+            ghidra_version=$(curl -fLsSo /dev/null -w %{url_effective} https://github.com/NationalSecurityAgency/ghidra/releases/latest |
+             grep -oP '(?<=https://github.com/NationalSecurityAgency/ghidra/releases/tag/Ghidra_).+(?=_build)')
+            echo "ghidra_version=$ghidra_version" >> $GITHUB_ENV
+          else
+            echo "ghidra_version=${{ matrix.ghidra }}" >> $GITHUB_ENV
+          fi
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          java-version: 17
+          distribution: adopt
+      - name: Setup Ghidra
+        uses: er28-0652/setup-ghidra@master
+        with:
+          version: ${{ env.ghidra_version }}
+      - name: Build Extension
+        run: gradle
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          path: dist/*.zip
+          if-no-files-found: error
+          retention-days: 1
+
+  push_release:
+    if: github.event_name == 'push'
+    needs: build_extension
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+      - name: Create Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create 1.0${{ GITHUB.RUN_NUMBER }} artifact/*.zip --target ${{ GITHUB.SHA }} -t 1.0${{ GITHUB.RUN_NUMBER }}
