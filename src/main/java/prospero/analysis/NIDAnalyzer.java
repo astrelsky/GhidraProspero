@@ -126,8 +126,12 @@ public class NIDAnalyzer extends AbstractAnalyzer {
 				if (loc == null) {
 					man.addExtLocation(ns, name, null, SourceType.IMPORTED);
 				}
-				s = table.createLabel(s.getAddress(), name, SourceType.IMPORTED);
-				s.setPrimary();
+				if (s.getAddress().isExternalAddress()) {
+					s.setName(name, SourceType.IMPORTED);
+				} else {
+					s = table.createLabel(s.getAddress(), name, SourceType.IMPORTED);
+					s.setPrimary();
+				}
 			} catch (Exception e) {
 				log.appendException(e);
 			}
