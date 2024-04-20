@@ -31,10 +31,6 @@ public class GhidraProsperoElfLoader extends ElfLoader {
 	private static final int EH_FRAME_PTR_OFFSET = 4;
 	private static final int EH_FRAME_HDR_COUNT_OFFSET = 8;
 	private static final int EH_FRAME_HDR_ENTRY_SIZE = 8;
-	private static final byte ABI_VERSION = 2;
-	private static final short MACHINE_TYPE = 0x3e;
-	private static final short PROGRAM_TYPE = (short) 0xFE10;
-    public static final short LIB_TYPE = (short) 0xFE18;
 	private static final LanguageCompilerSpecPair LANGUAGE =
 		new LanguageCompilerSpecPair("x86:LE:64:default", "gcc");
 
@@ -65,11 +61,7 @@ public class GhidraProsperoElfLoader extends ElfLoader {
 	public Collection<LoadSpec> findSupportedLoadSpecs(ByteProvider provider) throws IOException {
 		try {
 			ElfHeader header = new ElfHeader(provider, null);
-			short type = header.e_type();
-			short machine = header.e_machine();
-			byte abi = header.e_ident_abiversion();
-
-			if (machine == MACHINE_TYPE && (type == PROGRAM_TYPE || type == LIB_TYPE) && abi >= ABI_VERSION) {
+			if (ProsperoElfExtension.isProsperoElf(header)) {
 				return List.of((new LoadSpec(this, header.findImageBase(), LANGUAGE, true)));
 			}
 		} catch (ElfException e) {

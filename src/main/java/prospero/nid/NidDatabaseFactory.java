@@ -43,6 +43,9 @@ public class NidDatabaseFactory {
 				if (values == null) {
 					throw new IOException("Malformed "+AEROLIB);
 				}
+				if (values.length > 2) {
+					continue;
+				}
 	            result.put(values[0], values[1]);
 	        }
 		}

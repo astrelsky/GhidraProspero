@@ -4,7 +4,6 @@ import java.io.IOException;
 
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.MemoryByteProvider;
-import ghidra.app.util.bin.format.elf.ElfDynamicType;
 import ghidra.app.util.bin.format.elf.ElfProgramHeaderType;
 import ghidra.program.database.ProgramDB;
 import ghidra.program.model.address.Address;
@@ -22,6 +21,12 @@ public final class ImportManager {
 
 	private static final int ELF_DYN_TYPE_ORDINAL = 0;
 	private static final int ELF_DYN_VALUE_ORDINAL = 1;
+
+	//private static final long DT_SCE_IMPORT_MODULE = 0x61000045;
+	private static final long DT_SCE_IMPORT_LIBRARY = 0x61000049;
+
+	private static final int ID_SHIFT = 48;
+	private static final long NAME_MASK = 0xffffffffL;
 
 	private static final String TABLE_NAME = "Prospero Import Libraries";
 	private static final Schema SCHEMA =
@@ -41,7 +46,7 @@ public final class ImportManager {
 		this.table = table;
 	}
 
-	public boolean isCurrentLibrary(int index) throws IOException {
+	public boolean isCurrentLibrary(long index) throws IOException {
 		String name = getLibraryName(index);
 		return name.isEmpty();
 	}
@@ -68,17 +73,20 @@ public final class ImportManager {
 		MemoryByteProvider provider = new MemoryByteProvider(program.getMemory(), block.getStart());
 		BinaryReader reader = new BinaryReader(provider, true);
 		final int n = data.getNumComponents();
-		int currentId = 'A';
 		for (int i = 0; i < n; i++) {
 			Data comp = data.getComponent(i);
 			Scalar s = (Scalar) comp.getComponent(ELF_DYN_TYPE_ORDINAL).getValue();
 			long value = s.getUnsignedValue();
-			if (value == ElfDynamicType.DT_NEEDED.value) {
+			if (value == DT_SCE_IMPORT_LIBRARY) {
 				s = (Scalar) comp.getComponent(ELF_DYN_VALUE_ORDINAL).getValue();
-				String lib = reader.readAsciiString(s.getUnsignedValue());
-				addLibrary(lib, currentId++);
-			} else if (value == ElfDynamicType.DT_SONAME.value) {
-				addLibrary("", currentId++);
+				value = s.getUnsignedValue();
+				String lib = reader.readAsciiString(value & NAME_MASK);
+				int index = lib.lastIndexOf('.');
+				if (index == -1) {
+					// slap .prx on the end
+					lib += ".prx";
+				}
+				addLibrary(lib, value >>> ID_SHIFT);
 			}
 		}
 	}

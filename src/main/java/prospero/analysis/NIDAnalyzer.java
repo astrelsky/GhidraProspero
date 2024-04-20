@@ -10,6 +10,8 @@ import ghidra.app.util.importer.MessageLog;
 import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.listing.*;
 import ghidra.program.model.symbol.*;
+import ghidra.util.Msg;
+import ghidra.util.exception.AssertException;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.exception.InvalidInputException;
 import ghidra.util.task.TaskMonitor;
@@ -86,33 +88,30 @@ public class NIDAnalyzer extends AbstractAnalyzer {
 
 		void resolve(Symbol s) throws Exception {
 			Namespace ns = s.getParentNamespace();
-			String name = s.getName();
-			if (name.length() < 11 || name.charAt(11) != '#') {
+			String symbol = s.getName();
+			if (symbol.indexOf('#') == -1) {
 				return;
 			}
-			int id = name.charAt(12);
-			if (name.length() <= 15) {
-				if (name.charAt(13) == '#') {
-					if (importMan.containsLibrary(id)) {
-						ns = getExternalLibrary(id);
+			NidInfo info = new NidInfo(s.getName());
+			String name = db.get(info.nid);
+			try {
+				if (name == null) {
+					Namespace parent = s.getParentNamespace();
+					if (parent instanceof Library && !parent.getName().equals("<EXTERNAL>")) {
+						// already processed
+						return;
 					}
-				} else if (name.charAt(14) == '#') {
-					id = name.charAt(13);
-					if (importMan.containsLibrary(id)) {
-						ns = getExternalLibrary(id);
+					ns = getExternalLibrary(info.getId());
+					if (ns != null) {
+						s.setNamespace(ns);
 					}
-				} else {
 					return;
 				}
-			}
-			name = name.substring(0, 11);
-			if (db.containsKey(name)) {
-				name = db.get(name);
-			}
-			if (ns == null) {
-				ns = s.getProgram().getGlobalNamespace();
-			}
-			try {
+				ns = getExternalLibrary(info.getId());
+				if (ns == null) {
+					Msg.warn(this, "Failed to get library for " + symbol);
+					ns = s.getProgram().getGlobalNamespace();
+				}
 				s.setNameAndNamespace(name, ns, SourceType.IMPORTED);
 				if (name.equals("__stack_chk_fail")) {
 					if (s.getSymbolType() == SymbolType.FUNCTION) {
@@ -122,6 +121,9 @@ public class NIDAnalyzer extends AbstractAnalyzer {
 				}
 			} catch (InvalidInputException e) {
 				// occurs for data
+				if (name == null) {
+					name = symbol;
+				}
 				ExternalLocation loc = man.getExternalLocation(s);
 				if (loc == null) {
 					man.addExtLocation(ns, name, null, SourceType.IMPORTED);
@@ -137,16 +139,75 @@ public class NIDAnalyzer extends AbstractAnalyzer {
 			}
 		}
 
-		private Library getExternalLibrary(int index) throws Exception {
-			if (importMan.isCurrentLibrary(index)) {
+
+		private Library getExternalLibrary(long index) throws Exception {
+			String name = importMan.getLibraryName(index);
+			if (name == null) {
 				return null;
 			}
-			String name = importMan.getLibraryName(index);
 			Library lib = man.getExternalLibrary(name);
 			if (lib == null) {
 				lib = man.addExternalLibraryName(name, SourceType.IMPORTED);
 			}
 			return lib;
+		}
+	}
+
+	private static class NidInfo {
+		final String nid;
+		final String lid;
+		//final String mid;
+
+		NidInfo(String symbol) {
+			String[] parts = symbol.split("#");
+			if (parts.length > 0) {
+				nid = parts[0];
+			} else {
+				nid = "";
+			}
+			if (parts.length > 1) {
+				lid = parts[1];
+			} else {
+				lid = "";
+			}
+			/*if (parts.length > 2) {
+				mid = parts[2];
+			} else {
+				mid = "";
+			}*/
+		}
+
+		private static long charToId(int c) {
+			if (c >= 'A' && c <= 'Z') {
+				return c - 'A';
+			}
+			if (c >= 'a' && c <= 'z') {
+				return c - 'a' + 26;
+			}
+			if (c >= '0' && c <= '9') {
+				return c - '0' + 52;
+			}
+			if (c == '+') {
+				return 62;
+			}
+			if (c == '-') {
+				return 63;
+			}
+			throw new IllegalArgumentException("Invalid nid character " + c);
+		}
+
+		long getId() {
+			if (lid.length() == 1) {
+				return charToId(lid.charAt(0));
+			}
+			if (lid.length() == 2) {
+				long value = 0;
+				for (int c = lid.charAt(0); c > 'A'; c--) {
+					value += 64;
+				}
+				return value + charToId(lid.charAt(1));
+			}
+			throw new AssertException("NID's LIBID is more than 2 characters");
 		}
 	}
 }
