@@ -9,7 +9,6 @@ import ghidra.app.util.bin.format.elf.*;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.app.util.opinion.*;
 import ghidra.framework.model.DomainObject;
-import ghidra.framework.model.Project;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.lang.LanguageCompilerSpecPair;
 import ghidra.program.model.listing.Data;
@@ -81,9 +80,9 @@ public class GhidraProsperoElfLoader extends ElfLoader {
 
 	@Override
 	public List<Option> getDefaultOptions(ByteProvider provider, LoadSpec loadSpec,
-			DomainObject domainObject, boolean loadIntoProgram) {
+			DomainObject domainObject, boolean loadIntoProgram, boolean mirrorFsLayout) {
 		List<Option> options =
-			super.getDefaultOptions(provider, loadSpec, domainObject, loadIntoProgram);
+			super.getDefaultOptions(provider, loadSpec, domainObject, loadIntoProgram, mirrorFsLayout);
 		Option baseOption = options.stream()
 			.filter(o -> o.getName().equals("Image Base"))
 			.findFirst()
@@ -96,11 +95,18 @@ public class GhidraProsperoElfLoader extends ElfLoader {
 	}
 
 	@Override
-	protected void postLoadProgramFixups(List<Loaded<Program>> loadedPrograms, Project project, List<Option> options, MessageLog messageLog, TaskMonitor monitor)
+	protected void postLoadProgramFixups(List<Loaded<Program>> loadedPrograms, Loader.ImporterSettings settings)
 			throws CancelledException, IOException {
+		
+		super.postLoadProgramFixups(loadedPrograms, settings);
 		for (Loaded<Program> program : loadedPrograms) {
-			monitor.checkCancelled();
-			fixupProgram(program.getDomainObject(), messageLog, monitor);
+			settings.monitor().checkCancelled();
+			Program obj = program.getDomainObject(this);
+			try {
+				fixupProgram(obj, settings.log(), settings.monitor());
+			} finally {
+				obj.release(this);
+			}
 		}
 	}
 
@@ -227,7 +233,11 @@ public class GhidraProsperoElfLoader extends ElfLoader {
 				Address end = getEhFrameEnd(program);
 				if (ehframe.getSize() > end.subtract(ehframeAddress)) {
 					// rodata is at the end
-					createBlock(program, end, RODATA);
+					try {
+						createBlock(program, end, RODATA);
+					}catch (DuplicateNameException e) {
+						// don't care
+					}
 				}
 			}
 		} catch (Exception e) {
